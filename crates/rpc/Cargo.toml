@@ -1,0 +1,14 @@
+[package]
+name = "clu-rpc"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[dependencies]
+clu-core = { path = "../core" }
+clu-ai = { path = "../ai" }
+clu-tools = { path = "../tools" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "rt-multi-thread", "macros"] }
+futures-util = "0.3"

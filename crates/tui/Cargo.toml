@@ -1,0 +1,12 @@
+[package]
+name = "clu-tui"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+
+[dependencies]
+clu-core = { path = "../core" }
+ratatui = "0.26"
+crossterm = "0.27"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "io-util"] }
+serde_json = { workspace = true }
