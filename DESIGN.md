@@ -13,7 +13,7 @@ The guiding principle is **minimal core, maximum extensibility** — ship just e
 - **Portable** — Written in Zig, targeting native binaries and WebAssembly (WASM) for direct in-browser use.
 - **Provider-agnostic** — Supports any OpenAI-compatible Chat Completions API (OpenAI, Ollama, custom deployments).
 - **Embeddable** — Acts as a library/bridge for IDEs, custom TUIs, and other host software.
-- **Extensible** — Tools, providers, and extensions are discrete packages with a stable interface.
+- **Extensible** — Tools, providers, and extensions are discrete modules with a stable interface.
 - **Minimal by default** — The only built-in tool is a shell runner; everything else is opt-in.
 - **Interactive** — A first-class REPL mode for direct human use, modeled after `python`, `node`, or a shell.
 
@@ -21,11 +21,11 @@ The guiding principle is **minimal core, maximum extensibility** — ship just e
 
 ## Architecture
 
-clu is organized as a loose monorepo of packages grouped by concern. No package is a hard dependency of another unless strictly necessary. Packages are composed at the top-level CLI layer.
+clu is organized as a loose monorepo of modules grouped by concern. No module is a hard dependency of another unless strictly necessary. Modules are composed at the top-level CLI layer.
 
 ```text
 clu/
-├── packages/
+├── modules/
 │   │
 │   ├── core/                   # Engine: agent loop and interfaces
 │   │   ├── agent/              #   Agentic loop and turn orchestration
@@ -51,7 +51,7 @@ clu/
 │   │   ├── repl/               #   Interactive REPL mode
 │   │   └── rpc/                #   RPC server for IDE and TUI bridge integrations
 │   │
-│   └── clu/                    # Top-level CLI: composes all packages into a distributable binary
+│   └── clu/                    # Top-level CLI: composes all modules into a distributable binary
 │
 ├── DESIGN.md
 └── README.md
@@ -61,9 +61,9 @@ Each package is independently buildable. The `clu` top-level package is the only
 
 ---
 
-## Core Packages (`packages/core/`)
+## Core Packages (`modules/core/`)
 
-The engine of clu. Implements the agentic loop and defines stable contracts that all other packages depend on.
+The engine of clu. Implements the agentic loop and defines stable contracts that all other modules depend on.
 
 ### Agent (`core/agent`)
 
@@ -106,7 +106,7 @@ Defines how message history is persisted within and optionally across sessions.
 - **history() → []message** — retrieve full history
 - **clear()** — reset history
 
-The interface only defines the contract. Implementations live in `packages/storage/`.
+The interface only defines the contract. Implementations live in `modules/storage/`.
 
 ### Interface: Extension (`core/extensions`)
 
@@ -118,7 +118,7 @@ Defines what an extension is — a bundle of tools and/or lifecycle hooks that c
 
 ---
 
-## Providers (`packages/providers/`)
+## Providers (`modules/providers/`)
 
 ### OpenAI-Compatible (`providers/openai-compat`)
 
@@ -132,7 +132,7 @@ Implements the **Provider** interface against the OpenAI Chat Completions API (`
 
 ---
 
-## Storage (`packages/storage/`)
+## Storage (`modules/storage/`)
 
 Session storage backends implement the `core/storages` contract. The active backend is selected by CLI flags or configuration.
 
@@ -150,9 +150,9 @@ Session file path convention: `<storage-dir>/<cwd-hash>/<session-id>.jsonl`
 
 ---
 
-## Tools (`packages/tools/`)
+## Tools (`modules/tools/`)
 
-Tools are the unit of capability. The core ships no tools; tool packages do.
+Tools are the unit of capability. The core ships no tools; tool modules do.
 
 One shell tool is registered per session based on the host OS or explicit configuration. Each tool is self-contained — its own name, description, and schema. The output shape is shared by convention, not enforcement.
 
@@ -356,7 +356,7 @@ Executes JavaScript in a persistent Node.js REPL subprocess. State (variables, i
 
 ---
 
-## Comms (`packages/comms/`)
+## Comms (`modules/comms/`)
 
 Communication surfaces that expose a running clu session to humans or external software.
 
@@ -385,7 +385,7 @@ Tool calls are printed inline as they are dispatched. While a tool is running, t
 
 The last commit modified two files:
 - src/main.zig
-- packages/core/agent.zig
+- modules/core/agent.zig
 >>>
 ```
 
@@ -395,11 +395,11 @@ The result line shows the tool name, the command, and a brief output summary (li
 >>> what files changed in the last commit?
   ✔ bash: git diff --name-only HEAD~1
     src/main.zig
-    packages/core/agent.zig
+    modules/core/agent.zig
 
 The last commit modified two files:
 - src/main.zig
-- packages/core/agent.zig
+- modules/core/agent.zig
 >>>
 ```
 
@@ -607,7 +607,7 @@ Any response (including mid-stream) can carry an `error` field instead of `resul
 
 ---
 
-## CLI (`packages/clu`)
+## CLI (`modules/clu`)
 
 The top-level binary. Composes core, providers, tools, storage, and comms into a single distributable. There are no subcommands — all behavior is controlled through flags and optional positional prompt arguments.
 

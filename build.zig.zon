@@ -1,0 +1,8 @@
+.{
+    .name = .clu,
+    .fingerprint = 0x5cf70d733f8c0306,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{},
+    .paths = .{"."},
+}

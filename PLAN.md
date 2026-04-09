@@ -2,7 +2,7 @@
 
 ## Layer 1 — Foundation
 
-- [ ] Scaffold monorepo layout (`packages/` directory structure matching DESIGN.md)
+- [x] Scaffold monorepo layout (`modules/` directory structure matching DESIGN.md)
 - [ ] Implement `core/tools` — Tool interface (`name`, `description`, `input_schema`, `call`)
 - [ ] Implement `core/providers` — Provider interface (`complete`)
 - [ ] Implement `core/storages` — Session storage interface (`append`, `history`, `clear`)
@@ -26,6 +26,6 @@
 
 ## Layer 4 — Assembly & Targets
 
-- [ ] Implement `packages/clu` — Top-level CLI binary (flags, config loading, package wiring)
+- [ ] Implement `modules/clu` — Top-level CLI binary (flags, config loading, package wiring)
 - [ ] Implement TOML configuration (providers, model aliases, defaults, storage dir)
 - [ ] Implement WASM build target (C-ABI exports, exclude shell tools, host-injected tools)
