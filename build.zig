@@ -33,6 +33,8 @@ pub fn build(b: *std.Build) void {
     });
     mod_core_extensions.addImport("core_tools", mod_core_tools);
 
+    mod_core_storages.addImport("core_providers", mod_core_providers);
+
     // -------------------------------------------------------------------------
     // Core agent (depends on all interfaces)
     // -------------------------------------------------------------------------

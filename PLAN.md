@@ -3,11 +3,11 @@
 ## Layer 1 — Foundation
 
 - [x] Scaffold monorepo layout (`modules/` directory structure matching DESIGN.md)
-- [ ] Implement `core/tools` — Tool interface (`name`, `description`, `input_schema`, `call`)
-- [ ] Implement `core/providers` — Provider interface (`complete`)
-- [ ] Implement `core/storages` — Session storage interface (`append`, `history`, `clear`)
-- [ ] Implement `core/extensions` — Extension interface (`tools`, `on_session_start`, `on_session_end`)
-- [ ] Implement `core/agent` — Agentic loop (build messages → call provider → dispatch tools → repeat)
+- [x] Implement `core/tools` — Tool interface (`name`, `description`, `input_schema`, `call`)
+- [x] Implement `core/providers` — Provider interface (`complete`)
+- [x] Implement `core/storages` — Session storage interface (`append`, `history`, `clear`)
+- [x] Implement `core/extensions` — Extension interface (`tools`, `on_session_start`, `on_session_end`)
+- [x] Implement `core/agent` — Agentic loop (build messages → call provider → dispatch tools → repeat)
 
 ## Layer 2 — Implementations
 
