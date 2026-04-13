@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    mod_core_providers.addImport("core_tools", mod_core_tools);
 
     const mod_core_storages = b.addModule("core_storages", .{
         .root_source_file = b.path("modules/core/storages/src/root.zig"),
@@ -132,6 +133,28 @@ pub fn build(b: *std.Build) void {
     // Top-level CLI binary
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // Compile-time configuration (baked into the binary)
+    // Override at build time: zig build -Dbase_url=... -Dapi_key=... -Dmodel=...
+    // -------------------------------------------------------------------------
+
+    const build_options = b.addOptions();
+    build_options.addOption(
+        []const u8,
+        "base_url",
+        b.option([]const u8, "base_url", "Default API base URL") orelse "https://api.openai.com",
+    );
+    build_options.addOption(
+        []const u8,
+        "api_key",
+        b.option([]const u8, "api_key", "Default API key") orelse "",
+    );
+    build_options.addOption(
+        []const u8,
+        "model",
+        b.option([]const u8, "model", "Default model identifier") orelse "gpt-4o",
+    );
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("modules/clu/src/main.zig"),
         .target = target,
@@ -147,6 +170,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("tools_node", mod_tools_node);
     exe_mod.addImport("comms_repl", mod_comms_repl);
     exe_mod.addImport("comms_rpc", mod_comms_rpc);
+    exe_mod.addOptions("build_options", build_options);
 
     const exe = b.addExecutable(.{
         .name = "clu",
@@ -168,32 +192,28 @@ pub fn build(b: *std.Build) void {
     // Test step: `zig build test`
     // -------------------------------------------------------------------------
 
+    // Reuse the already-wired named modules for tests so that all @import
+    // declarations resolve correctly — each module already has its dependencies
+    // added via addImport above.
     const test_step = b.step("test", "Run all unit tests");
-    const test_sources: []const struct { name: []const u8, path: []const u8 } = &.{
-        .{ .name = "core_tools",             .path = "modules/core/tools/src/root.zig" },
-        .{ .name = "core_providers",         .path = "modules/core/providers/src/root.zig" },
-        .{ .name = "core_storages",          .path = "modules/core/storages/src/root.zig" },
-        .{ .name = "core_extensions",        .path = "modules/core/extensions/src/root.zig" },
-        .{ .name = "core_agent",             .path = "modules/core/agent/src/root.zig" },
-        .{ .name = "provider_openai_compat", .path = "modules/providers/openai-compat/src/root.zig" },
-        .{ .name = "storage_memory",         .path = "modules/storage/memory/src/root.zig" },
-        .{ .name = "storage_jsonl",          .path = "modules/storage/jsonl/src/root.zig" },
-        .{ .name = "tools_bash",             .path = "modules/tools/bash/src/root.zig" },
-        .{ .name = "tools_pwsh",             .path = "modules/tools/pwsh/src/root.zig" },
-        .{ .name = "tools_fs",               .path = "modules/tools/fs/src/root.zig" },
-        .{ .name = "tools_node",             .path = "modules/tools/node/src/root.zig" },
-        .{ .name = "comms_repl",             .path = "modules/comms/repl/src/root.zig" },
-        .{ .name = "comms_rpc",              .path = "modules/comms/rpc/src/root.zig" },
+    const test_modules: []const struct { name: []const u8, mod: *std.Build.Module } = &.{
+        .{ .name = "core_tools",             .mod = mod_core_tools },
+        .{ .name = "core_providers",         .mod = mod_core_providers },
+        .{ .name = "core_storages",          .mod = mod_core_storages },
+        .{ .name = "core_extensions",        .mod = mod_core_extensions },
+        .{ .name = "core_agent",             .mod = mod_core_agent },
+        .{ .name = "provider_openai_compat", .mod = mod_provider_openai_compat },
+        .{ .name = "storage_memory",         .mod = mod_storage_memory },
+        .{ .name = "storage_jsonl",          .mod = mod_storage_jsonl },
+        .{ .name = "tools_bash",             .mod = mod_tools_bash },
+        .{ .name = "tools_pwsh",             .mod = mod_tools_pwsh },
+        .{ .name = "tools_fs",               .mod = mod_tools_fs },
+        .{ .name = "tools_node",             .mod = mod_tools_node },
+        .{ .name = "comms_repl",             .mod = mod_comms_repl },
+        .{ .name = "comms_rpc",              .mod = mod_comms_rpc },
     };
-    inline for (test_sources) |s| {
-        const unit_tests = b.addTest(.{
-            .name = s.name,
-            .root_module = b.createModule(.{
-                .root_source_file = b.path(s.path),
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
+    for (test_modules) |s| {
+        const unit_tests = b.addTest(.{ .name = s.name, .root_module = s.mod });
         test_step.dependOn(&b.addRunArtifact(unit_tests).step);
     }
 }

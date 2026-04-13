@@ -11,11 +11,11 @@
 
 ## Layer 2 — Implementations
 
-- [ ] Implement `providers/openai-compat` — OpenAI-compatible Chat Completions provider (`base_url`, `api_key`, `model`)
-- [ ] Implement `storage/memory` — In-memory ephemeral session storage
+- [x] Implement `providers/openai-compat` — OpenAI-compatible Chat Completions provider (`base_url`, `api_key`, `model`)
+- [x] Implement `storage/memory` — In-memory ephemeral session storage
 - [ ] Implement `storage/jsonl` — JSONL file-backed persistent session storage (session file path convention)
 - [ ] Implement `tools/bash` — Bash shell tool (`stdout`, `stderr`, `exit_code`)
-- [ ] Implement `tools/pwsh` — PowerShell tool (`stdout`, `stderr`, `exit_code`)
+- [x] Implement `tools/pwsh` — PowerShell tool (`stdout`, `stderr`, `exit_code`)
 - [ ] Implement `tools/fs` — File system tools (`read`, `write`, `edit`, `grep`, `find`, `ls`)
 - [ ] Implement `tools/node` — Persistent Node.js REPL tool (state across calls, subprocess lifecycle)
 

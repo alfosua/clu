@@ -85,10 +85,10 @@ pub const Agent = struct {
         try self.storage.append(.{ .user = input });
 
         // Gather tools from extensions alongside statically registered ones.
-        var all_tools = std.ArrayList(Tool).init(self.allocator);
-        defer all_tools.deinit();
-        try all_tools.appendSlice(self.tools);
-        for (self.extensions) |ext| try all_tools.appendSlice(ext.tools());
+        var all_tools: std.ArrayList(Tool) = .{};
+        defer all_tools.deinit(self.allocator);
+        try all_tools.appendSlice(self.allocator, self.tools);
+        for (self.extensions) |ext| try all_tools.appendSlice(self.allocator, ext.tools());
 
         var steps: usize = 0;
         while (true) {
