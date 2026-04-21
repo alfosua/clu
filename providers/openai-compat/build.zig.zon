@@ -1,0 +1,7 @@
+.{
+    .name = .openai_compat,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{""},
+    .fingerprint = 0x9e0044a811567145,
+}
