@@ -4,12 +4,17 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const clu_data_mod = b.dependency("clu_data", .{}).module("clu_data");
+
     const exe = b.addExecutable(.{
-        .name = "clu_provider_openai_compat",
+        .name = "clu_loop_std_single_thread_sync",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{
+                .{ .name = "clu_data", .module = clu_data_mod },
+            },
         }),
     });
 

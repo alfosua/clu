@@ -1,0 +1,10 @@
+.{
+    .name = .single_thread_sync,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{""},
+    .fingerprint = 0xae5c8e4d40cdd008,
+    .dependencies = .{
+        .clu_data = .{ .path = "../../../libs/data" },
+    },
+}

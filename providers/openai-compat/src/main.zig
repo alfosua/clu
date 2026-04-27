@@ -5,29 +5,16 @@ const Options = struct {
     baseUrl: []const u8 = undefined,
     apiKey: []const u8 = undefined,
     model: []const u8 = undefined,
+    tools: []const u8 = undefined,
 };
 
 pub fn main(init: std.process.Init) !void {
-    var args = init.minimal.args.iterate();
-    const opts = try parseOptions(&args);
+    const opts = try loadOptions(init);
     const allocator = init.arena.allocator();
 
     var client = std.http.Client{ .allocator = allocator, .io = init.io };
 
     const uri = try createResponsesUri(allocator, opts.baseUrl);
-
-    const payload = .{
-        .model = opts.model,
-        .input = opts.prompt,
-        .stream = true,
-    };
-
-    var jsonBuffer = std.Io.Writer.Allocating.init(allocator);
-    var stringifier = std.json.Stringify{
-        .writer = &jsonBuffer.writer,
-        .options = .{},
-    };
-    try stringifier.write(payload);
 
     const parts = &[_][]const u8{ "Bearer ", opts.apiKey };
     const authHeaderValue = try std.mem.concat(allocator, u8, parts);
@@ -38,7 +25,8 @@ pub fn main(init: std.process.Init) !void {
         },
     });
 
-    try req.sendBodyComplete(jsonBuffer.writer.buffered());
+    const req_body_buffer = try createRequestBodyBuffer(allocator, opts);
+    try req.sendBodyComplete(req_body_buffer);
 
     var response_buffer: [1024]u8 = undefined;
     var response = try req.receiveHead(&response_buffer);
@@ -62,6 +50,36 @@ pub fn main(init: std.process.Init) !void {
     };
 
     try processResponse(response_ctx);
+}
+
+fn createRequestBodyBuffer(
+    allocator: std.mem.Allocator,
+    options: Options,
+) ![]u8 {
+    var json = std.Io.Writer.Allocating.init(allocator);
+    var jws = std.json.Stringify{
+        .writer = &json.writer,
+        .options = .{},
+    };
+    try jws.beginObject();
+
+    try jws.objectField("model");
+    try jws.write(options.model);
+
+    try jws.objectField("input");
+    try jws.write(options.prompt);
+
+    try jws.objectField("stream");
+    try jws.write(true);
+
+    try jws.objectField("tools");
+    try jws.beginWriteRaw();
+    _ = try json.writer.write(options.tools);
+    jws.endWriteRaw();
+
+    try jws.endObject();
+
+    return json.writer.buffered();
 }
 
 const ResponseContext = struct {
@@ -108,6 +126,8 @@ const Event = enum {
     response_output_text_done,
     response_content_part_added,
     response_content_part_done,
+    response_function_call_arguments_delta,
+    response_function_call_arguments_done,
     unknown,
 };
 const eventMap = std.StaticStringMap(Event).initComptime(.{
@@ -122,6 +142,8 @@ const eventMap = std.StaticStringMap(Event).initComptime(.{
     .{ "response.output_text.done", .response_output_text_done },
     .{ "response.content_part.added", .response_content_part_added },
     .{ "response.content_part.done", .response_content_part_done },
+    .{ "response.function_call_arguments.delta", .response_function_call_arguments_delta },
+    .{ "response.function_call_arguments.done", .response_function_call_arguments_done },
 });
 const EventContext = struct {
     event: Event,
@@ -145,6 +167,8 @@ const eventHandlerMap = std.EnumArray(Event, EventHandlerFn).init(.{
     .response_output_text_done = handleEventToNull,
     .response_content_part_added = handleEventToNull,
     .response_content_part_done = handleEventToNull,
+    .response_function_call_arguments_delta = handleResponseDelta,
+    .response_function_call_arguments_done = handleEventToNull,
     .unknown = handleEventToLog,
 });
 
@@ -207,15 +231,36 @@ fn handleResponseOutputItemAdded(ctx: EventContext) EventHandlerError!void {
         return EventHandlerError.InvalidOperation;
     };
     const item_type = std.meta.stringToEnum(ResponseOutputItemType, item_type_json.string) orelse return EventHandlerError.InvalidOperation;
-    writeOutputStarter(ctx.writer, item_id.string, item_type) catch |err| {
-        std.log.err("Failed to write: {s}", .{@errorName(err)});
-        return EventHandlerError.InvalidOperation;
-    };
+    if (item_type == .function_call) {
+        const call_id = item.object.get("call_id") orelse {
+            std.log.err("No call id defined", .{});
+            return EventHandlerError.InvalidOperation;
+        };
+        const name = item.object.get("name") orelse {
+            std.log.err("No name defined", .{});
+            return EventHandlerError.InvalidOperation;
+        };
+        writeFunctionCallStarter(
+            ctx.writer,
+            item_id.string,
+            call_id.string,
+            name.string,
+        ) catch |err| {
+            std.log.err("Failed to write: {s}", .{@errorName(err)});
+            return EventHandlerError.InvalidOperation;
+        };
+    } else {
+        writeOutputStarter(ctx.writer, item_id.string, item_type) catch |err| {
+            std.log.err("Failed to write: {s}", .{@errorName(err)});
+            return EventHandlerError.InvalidOperation;
+        };
+    }
 }
 
 const ResponseOutputItemType = enum {
     reasoning,
     message,
+    function_call,
 };
 
 fn writeOutputStarter(writer: *std.Io.Writer, id: []const u8, item_type: ResponseOutputItemType) !void {
@@ -225,6 +270,25 @@ fn writeOutputStarter(writer: *std.Io.Writer, id: []const u8, item_type: Respons
     try writer.writeAll(id);
     try writer.writeAll("\">");
     try writer.writeAll("\n");
+    try writer.flush();
+}
+
+fn writeFunctionCallStarter(
+    writer: *std.Io.Writer,
+    id: []const u8,
+    call_id: []const u8,
+    name: []const u8,
+) !void {
+    try writer.writeAll("<function-call ");
+    try writer.writeAll(" id=\"");
+    try writer.writeAll(id);
+    try writer.writeAll("\"");
+    try writer.writeAll(" call-id=\"");
+    try writer.writeAll(call_id);
+    try writer.writeAll("\"");
+    try writer.writeAll(" name=\"");
+    try writer.writeAll(name);
+    try writer.writeAll("\">");
     try writer.flush();
 }
 
@@ -249,12 +313,16 @@ fn handleResponseOutputItemDone(ctx: EventContext) EventHandlerError!void {
 }
 
 fn writeOutputItemFinalizer(writer: *std.Io.Writer, item_type: ResponseOutputItemType) !void {
-    try writer.writeAll("\n");
-    try writer.writeAll("</");
-    try writer.writeAll(@tagName(item_type));
-    try writer.writeAll(">");
-    try writer.writeAll("\n");
-    try writer.flush();
+    if (item_type == .function_call) {
+        try writer.writeAll("</function-call>\n");
+    } else {
+        try writer.writeAll("\n");
+        try writer.writeAll("</");
+        try writer.writeAll(@tagName(item_type));
+        try writer.writeAll(">");
+        try writer.writeAll("\n");
+        try writer.flush();
+    }
 }
 
 fn handleResponseDelta(ctx: EventContext) EventHandlerError!void {
@@ -283,18 +351,21 @@ fn writeDelta(writer: *std.Io.Writer, delta: []const u8) !void {
 
 const OptionDef = struct {
     alias: []const u8,
-    shortAlias: []const u8,
+    short_alias: []const u8,
 };
 
-const BASE_URL_OPT = OptionDef{ .alias = "--base-url", .shortAlias = "-u" };
-const API_KEY_OPT = OptionDef{ .alias = "--api-key", .shortAlias = "-k" };
-const MODEL_OPT = OptionDef{ .alias = "--model", .shortAlias = "-m" };
+const BASE_URL_OPT = OptionDef{ .alias = "--base-url", .short_alias = "-u" };
+const API_KEY_OPT = OptionDef{ .alias = "--api-key", .short_alias = "-k" };
+const MODEL_OPT = OptionDef{ .alias = "--model", .short_alias = "-m" };
 
-fn parseOptions(args: *std.process.Args.Iterator) ArgParseError!Options {
+fn loadOptions(init: std.process.Init) ArgParseError!Options {
+    var args = init.minimal.args.iterate();
+
     var prompt: ?[]const u8 = null;
     var baseUrl: ?[]const u8 = null;
     var apiKey: ?[]const u8 = null;
     var model: ?[]const u8 = null;
+    const tools = init.environ_map.get("CLU_AVAILABLE_TOOLS") orelse "[]";
 
     while (args.next()) |arg| {
         if (isOption(arg, BASE_URL_OPT)) {
@@ -313,11 +384,12 @@ fn parseOptions(args: *std.process.Args.Iterator) ArgParseError!Options {
         .baseUrl = baseUrl orelse return missingRequiredOptionError("--base-url"),
         .apiKey = apiKey orelse return missingRequiredOptionError("--api-key"),
         .model = model orelse return missingRequiredOptionError("--model"),
+        .tools = tools,
     };
 }
 
 fn isOption(arg: []const u8, option: OptionDef) bool {
-    return std.mem.eql(u8, arg, option.shortAlias) or std.mem.eql(u8, arg, option.alias);
+    return std.mem.eql(u8, arg, option.short_alias) or std.mem.eql(u8, arg, option.alias);
 }
 
 const ArgParseError = error{

@@ -1,0 +1,17 @@
+.{
+    .name = .clu,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .paths = .{""},
+    .fingerprint = 0x5cf70d733ca8bc92,
+    .dependencies = .{
+        // executables
+        .clu = .{ .path = "cli" },
+        .clu_loop_std_single_thread_sync = .{ .path = "loops/std/single-thread-sync" },
+        .clu_provider_openai_compat = .{ .path = "providers/openai-compat" },
+        .clu_tool_std_read = .{ .path = "tools/std/read" },
+        .clu_tool_std_ls = .{ .path = "tools/std/ls" },
+        // modules
+        .clu_data = .{ .path = "libs/data" },
+    },
+}
