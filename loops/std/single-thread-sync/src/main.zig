@@ -31,7 +31,7 @@ pub fn main(init: std.process.Init) !void {
 
     try custom_env.put("CLU_AVAILABLE_TOOLS", tools_json_str);
 
-    const argv = &[_][]const u8{ options.provider.hook, "--base-url", "http://localhost:11434/v1", "--api-key", "ollama", "--model", "nemotron-3-nano:4b", options.prompt };
+    const argv = &[_][]const u8{ options.provider.hook, "--base-url", "http://localhost:11434/v1", "--api-key", "ollama", "--model", "nemotron-3-nano:4b" };
 
     var child = try std.process.spawn(init.io, .{
         .argv = argv,
@@ -43,15 +43,15 @@ pub fn main(init: std.process.Init) !void {
     });
     defer _ = child.kill(init.io);
 
-    // const child_stdin_file = child.stdin orelse return error.NoProviderStdin;
-    // var child_stdin_buffer: [1024 * 1024 * 4]u8 = undefined;
-    // var child_stdin_wrapper = child_stdin_file.writer(init.io, &child_stdin_buffer);
-    // const child_stdin_writer = &child_stdin_wrapper.interface;
+    const child_stdin_file = child.stdin orelse return error.NoProviderStdin;
+    var child_stdin_buffer: [1024 * 1024 * 4]u8 = undefined;
+    var child_stdin_wrapper = child_stdin_file.writer(init.io, &child_stdin_buffer);
+    const child_stdin_writer = &child_stdin_wrapper.interface;
 
-    // var data_writer = DataWriter{ .writer = child_stdin_writer };
-    // try data_writer.beginMessage();
-    // child_stdin_writer.writeAll(options.prompt);
-    // try data_writer.endMessage();
+    var data_writer = DataWriter{ .writer = child_stdin_writer };
+    try data_writer.beginMessage();
+    try child_stdin_writer.writeAll(options.prompt);
+    try data_writer.endBlock();
 
     const child_stdout_file = child.stdout orelse return error.NoProviderStdout;
     var child_stdout_buffer: [1024 * 1024 * 4]u8 = undefined;
@@ -124,7 +124,7 @@ pub fn main(init: std.process.Init) !void {
         try writer.beginToolResult(call.call_id);
         try buffer.writer.writeAll(result.stdout);
         try buffer.writer.writeAll(result.stderr);
-        try writer.endToolResult();
+        try writer.endBlock();
 
         const result_slice = try buffer.toOwnedSlice();
         defer init.gpa.free(result_slice);

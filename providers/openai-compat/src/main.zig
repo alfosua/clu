@@ -1,4 +1,5 @@
 const std = @import("std");
+const DataWriter = @import("clu_data").Writer;
 
 const Options = struct {
     prompt: []const u8 = undefined,
@@ -102,15 +103,14 @@ fn processResponse(ctx: ResponseContext) !void {
         const event = eventMap.get(event_str) orelse .unknown;
         const data = next_line[6..];
 
-        const eventCtx = EventContext{
+        const handler = getEventHandler(event);
+
+        try handler(.{
             .event = event,
             .data = data,
             .writer = ctx.writer,
             .allocator = ctx.allocator,
-        };
-        const handler = eventHandlerMap.get(event);
-
-        try handler(eventCtx);
+        });
     }
 }
 
@@ -148,29 +148,31 @@ const eventMap = std.StaticStringMap(Event).initComptime(.{
 const EventContext = struct {
     event: Event,
     data: []const u8,
-    writer: *std.Io.Writer,
+    writer: *DataWriter,
     allocator: std.mem.Allocator,
 };
 const EventHandlerError = error{
     InvalidOperation,
 };
 const EventHandlerFn = *const fn (EventContext) EventHandlerError!void;
-const eventHandlerMap = std.EnumArray(Event, EventHandlerFn).init(.{
-    .response_created = handleResponseCreatedEvent,
-    .response_in_progress = handleEventToNull,
-    .response_completed = handleEventToNull,
-    .response_output_item_added = handleResponseOutputItemAdded,
-    .response_reasoning_summary_text_delta = handleResponseDelta,
-    .response_reasoning_summary_text_done = handleEventToNull,
-    .response_output_item_done = handleResponseOutputItemDone,
-    .response_output_text_delta = handleResponseDelta,
-    .response_output_text_done = handleEventToNull,
-    .response_content_part_added = handleEventToNull,
-    .response_content_part_done = handleEventToNull,
-    .response_function_call_arguments_delta = handleResponseDelta,
-    .response_function_call_arguments_done = handleEventToNull,
-    .unknown = handleEventToLog,
-});
+fn getEventHandler(e: Event) EventHandlerFn {
+    return switch (e) {
+        .response_created => handleResponseCreatedEvent,
+        .response_in_progress => handleEventToNull,
+        .response_completed => handleEventToNull,
+        .response_output_item_added => handleResponseOutputItemAdded,
+        .response_reasoning_summary_text_delta => handleResponseDelta,
+        .response_reasoning_summary_text_done => handleEventToNull,
+        .response_output_item_done => handleResponseOutputItemDone,
+        .response_output_text_delta => handleResponseDelta,
+        .response_output_text_done => handleEventToNull,
+        .response_content_part_added => handleEventToNull,
+        .response_content_part_done => handleEventToNull,
+        .response_function_call_arguments_delta => handleResponseDelta,
+        .response_function_call_arguments_done => handleEventToNull,
+        .unknown => handleEventToLog,
+    };
+}
 
 fn handleEventToNull(_: EventContext) EventHandlerError!void {}
 
@@ -199,18 +201,10 @@ fn handleResponseCreatedEvent(ctx: EventContext) EventHandlerError!void {
         std.log.err("No ID defined", .{});
         return EventHandlerError.InvalidOperation;
     };
-    writeResponseStarter(ctx.writer, id.string) catch |err| {
+    try ctx.writer.writeResponse(id) catch |err| {
         std.log.err("Failed to write: {s}", .{@errorName(err)});
         return EventHandlerError.InvalidOperation;
     };
-}
-
-fn writeResponseStarter(writer: *std.Io.Writer, id: []const u8) !void {
-    try writer.writeAll("<response id=\"");
-    try writer.writeAll(id);
-    try writer.writeAll("\">");
-    try writer.writeAll("\n");
-    try writer.flush();
 }
 
 fn handleResponseOutputItemAdded(ctx: EventContext) EventHandlerError!void {
@@ -240,17 +234,13 @@ fn handleResponseOutputItemAdded(ctx: EventContext) EventHandlerError!void {
             std.log.err("No name defined", .{});
             return EventHandlerError.InvalidOperation;
         };
-        writeFunctionCallStarter(
-            ctx.writer,
-            item_id.string,
-            call_id.string,
-            name.string,
-        ) catch |err| {
+        ctx.writer.beginToolCall(call_id.string, name.string) catch |err| {
             std.log.err("Failed to write: {s}", .{@errorName(err)});
             return EventHandlerError.InvalidOperation;
         };
     } else {
-        writeOutputStarter(ctx.writer, item_id.string, item_type) catch |err| {
+        ctx.writer
+            .writeOutputStarter(ctx.writer, item_id.string, item_type) catch |err| {
             std.log.err("Failed to write: {s}", .{@errorName(err)});
             return EventHandlerError.InvalidOperation;
         };
@@ -263,66 +253,11 @@ const ResponseOutputItemType = enum {
     function_call,
 };
 
-fn writeOutputStarter(writer: *std.Io.Writer, id: []const u8, item_type: ResponseOutputItemType) !void {
-    try writer.writeAll("<");
-    try writer.writeAll(@tagName(item_type));
-    try writer.writeAll(" id=\"");
-    try writer.writeAll(id);
-    try writer.writeAll("\">");
-    try writer.writeAll("\n");
-    try writer.flush();
-}
-
-fn writeFunctionCallStarter(
-    writer: *std.Io.Writer,
-    id: []const u8,
-    call_id: []const u8,
-    name: []const u8,
-) !void {
-    try writer.writeAll("<function-call ");
-    try writer.writeAll(" id=\"");
-    try writer.writeAll(id);
-    try writer.writeAll("\"");
-    try writer.writeAll(" call-id=\"");
-    try writer.writeAll(call_id);
-    try writer.writeAll("\"");
-    try writer.writeAll(" name=\"");
-    try writer.writeAll(name);
-    try writer.writeAll("\">");
-    try writer.flush();
-}
-
 fn handleResponseOutputItemDone(ctx: EventContext) EventHandlerError!void {
-    const json = parseJson(ctx.allocator, ctx.data, .{}) catch |err| {
-        std.log.err("Error parsing json: {s}", .{@errorName(err)});
-        return EventHandlerError.InvalidOperation;
-    };
-    const item = json.value.object.get("item") orelse {
-        std.log.err("Bad model", .{});
-        return EventHandlerError.InvalidOperation;
-    };
-    const item_type_json = item.object.get("type") orelse {
-        std.log.err("No type defined", .{});
-        return EventHandlerError.InvalidOperation;
-    };
-    const item_type = std.meta.stringToEnum(ResponseOutputItemType, item_type_json.string) orelse return EventHandlerError.InvalidOperation;
-    writeOutputItemFinalizer(ctx.writer, item_type) catch |err| {
+    ctx.writer.endBlock() catch |err| {
         std.log.err("Failed to write: {s}", .{@errorName(err)});
         return EventHandlerError.InvalidOperation;
     };
-}
-
-fn writeOutputItemFinalizer(writer: *std.Io.Writer, item_type: ResponseOutputItemType) !void {
-    if (item_type == .function_call) {
-        try writer.writeAll("</function-call>\n");
-    } else {
-        try writer.writeAll("\n");
-        try writer.writeAll("</");
-        try writer.writeAll(@tagName(item_type));
-        try writer.writeAll(">");
-        try writer.writeAll("\n");
-        try writer.flush();
-    }
 }
 
 fn handleResponseDelta(ctx: EventContext) EventHandlerError!void {
@@ -338,15 +273,10 @@ fn handleResponseDelta(ctx: EventContext) EventHandlerError!void {
     //    std.log.err("No ID defined", .{});
     //    return EventHandlerError.InvalidOperation;
     // };
-    writeDelta(ctx.writer, delta.string) catch |err| {
+    ctx.writer.write(delta.string) catch |err| {
         std.log.err("Failed to write: {s}", .{@errorName(err)});
         return EventHandlerError.InvalidOperation;
     };
-}
-
-fn writeDelta(writer: *std.Io.Writer, delta: []const u8) !void {
-    try writer.writeAll(delta);
-    try writer.flush();
 }
 
 const OptionDef = struct {
