@@ -7,7 +7,7 @@
     .dependencies = .{
         // executables
         .clu = .{ .path = "cli" },
-        .clu_loop_std_single_thread_sync = .{ .path = "loops/std/single-thread-sync" },
+        .clu_loop_simple = .{ .path = "loops/simple" },
         .clu_provider_openai_compat = .{ .path = "providers/openai-compat" },
         .clu_tool_std_read = .{ .path = "tools/std/read" },
         .clu_tool_std_ls = .{ .path = "tools/std/ls" },

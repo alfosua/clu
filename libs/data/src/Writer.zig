@@ -4,7 +4,7 @@ const std = @import("std");
 
 writer: *std.Io.Writer,
 
-pub const HeaderPrefix = enum(u8) {
+pub const Prefix = enum(u8) {
     delimiter = 0x00,
     send,
     response,
@@ -22,7 +22,7 @@ pub fn write(self: *Writer, data: []const u8) !void {
     try self.writer.writeAll(data);
 }
 
-pub fn writeHeaderPrefix(self: *Writer, prefix: HeaderPrefix) !void {
+pub fn writeHeaderPrefix(self: *Writer, prefix: Prefix) !void {
     try self.writer.writeAll(&[_]u8{@intFromEnum(prefix)});
 }
 

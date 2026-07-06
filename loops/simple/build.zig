@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const clu_data_mod = b.dependency("clu_data", .{}).module("clu_data");
 
     const exe = b.addExecutable(.{
-        .name = "clu_loop_std_single_thread_sync",
+        .name = "clu_loop_simple",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,

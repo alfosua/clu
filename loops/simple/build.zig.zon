@@ -1,9 +1,9 @@
 .{
-    .name = .clu_openai_compat,
+    .name = .clu_loop_simple,
     .version = "0.0.1",
     .minimum_zig_version = "0.16.0",
     .paths = .{""},
-    .fingerprint = 0xa2c3ba1e134e68e7,
+    .fingerprint = 0x3b00b98b5cd7f1b0,
     .dependencies = .{
         .clu_data = .{ .path = "../../libs/data" },
     },

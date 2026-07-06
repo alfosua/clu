@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     const exes = [_][]const u8{
         "clu",
-        "clu_loop_std_single_thread_sync",
+        "clu_loop_simple",
         "clu_provider_openai_compat",
         "clu_tool_std_read",
         "clu_tool_std_ls",

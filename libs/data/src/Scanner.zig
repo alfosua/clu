@@ -29,7 +29,7 @@ pub fn init(reader: *std.Io.Reader) Scanner {
     return Scanner{ .reader = reader };
 }
 
-pub fn next(self: *Scanner) !Token {
+pub fn next(self: *Scanner) !?Token {
     if (self.is_building_body) {
         return self.nextBody();
     } else {

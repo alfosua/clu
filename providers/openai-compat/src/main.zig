@@ -1,10 +1,11 @@
 const std = @import("std");
+const OpenAIClient = @import("Client.zig");
 const DataWriter = @import("clu_data").Writer;
 
 const Options = struct {
     prompt: []const u8 = undefined,
-    baseUrl: []const u8 = undefined,
-    apiKey: []const u8 = undefined,
+    endpoint: []const u8 = undefined,
+    api_key: []const u8 = undefined,
     model: []const u8 = undefined,
     tools: []const u8 = undefined,
 };
@@ -13,44 +14,35 @@ pub fn main(init: std.process.Init) !void {
     const opts = try loadOptions(init);
     const allocator = init.arena.allocator();
 
-    var client = std.http.Client{ .allocator = allocator, .io = init.io };
-
-    const uri = try createResponsesUri(allocator, opts.baseUrl);
-
-    const parts = &[_][]const u8{ "Bearer ", opts.apiKey };
-    const authHeaderValue = try std.mem.concat(allocator, u8, parts);
-
-    var req = try client.request(.POST, uri, .{
-        .headers = .{
-            .authorization = .{ .override = authHeaderValue },
-        },
+    var client = try OpenAIClient.init(allocator, init.io, .{
+        .endpoint = opts.endpoint,
+        .api_key = opts.api_key,
     });
 
-    const req_body_buffer = try createRequestBodyBuffer(allocator, opts);
-    try req.sendBodyComplete(req_body_buffer);
+    var req_buffer: [1024 * 1024 * 4]u8 = undefined;
+    var req = try client.request(&req_buffer);
 
-    var response_buffer: [1024]u8 = undefined;
-    var response = try req.receiveHead(&response_buffer);
+    try req.model(opts.model);
+    try req.beginInput();
+    try req.writeDelta(opts.prompt);
+    try req.endInput();
 
-    if (response.head.status != .ok) {
-        return error.UnexpectedError;
-    }
+    try req.send();
 
-    var body_buffer: [1024 * 1024]u8 = undefined;
-    const body_reader = response.reader(&body_buffer);
+    var transfer_buffer: [1024 * 1024 * 4]u8 = undefined;
+    const response_reader = try req.receive(&transfer_buffer);
 
     // Initialize standard output
     var stdout_buffer: [1024 * 1024]u8 = undefined;
     var stdout_wrapper = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_wrapper.interface;
+    var writer = DataWriter{ .writer = stdout };
 
-    const response_ctx = ResponseContext{
-        .reader = body_reader,
-        .writer = stdout,
+    try processResponse(.{
+        .reader = response_reader,
+        .writer = &writer,
         .allocator = allocator,
-    };
-
-    try processResponse(response_ctx);
+    });
 }
 
 fn createRequestBodyBuffer(
@@ -85,7 +77,7 @@ fn createRequestBodyBuffer(
 
 const ResponseContext = struct {
     reader: *std.Io.Reader,
-    writer: *std.Io.Writer,
+    writer: *DataWriter,
     allocator: std.mem.Allocator,
 };
 
@@ -201,7 +193,7 @@ fn handleResponseCreatedEvent(ctx: EventContext) EventHandlerError!void {
         std.log.err("No ID defined", .{});
         return EventHandlerError.InvalidOperation;
     };
-    try ctx.writer.writeResponse(id) catch |err| {
+    ctx.writer.writeResponse(id.string) catch |err| {
         std.log.err("Failed to write: {s}", .{@errorName(err)});
         return EventHandlerError.InvalidOperation;
     };
@@ -216,10 +208,10 @@ fn handleResponseOutputItemAdded(ctx: EventContext) EventHandlerError!void {
         std.log.err("Bad model", .{});
         return EventHandlerError.InvalidOperation;
     };
-    const item_id = item.object.get("id") orelse {
-        std.log.err("No ID defined", .{});
-        return EventHandlerError.InvalidOperation;
-    };
+    //const item_id = item.object.get("id") orelse {
+    //    std.log.err("No ID defined", .{});
+    //    return EventHandlerError.InvalidOperation;
+    //};
     const item_type_json = item.object.get("type") orelse {
         std.log.err("No type defined", .{});
         return EventHandlerError.InvalidOperation;
@@ -235,15 +227,18 @@ fn handleResponseOutputItemAdded(ctx: EventContext) EventHandlerError!void {
             return EventHandlerError.InvalidOperation;
         };
         ctx.writer.beginToolCall(call_id.string, name.string) catch |err| {
-            std.log.err("Failed to write: {s}", .{@errorName(err)});
+            std.log.err("Failed to being tool call: {s}", .{@errorName(err)});
             return EventHandlerError.InvalidOperation;
         };
     } else {
-        ctx.writer
-            .writeOutputStarter(ctx.writer, item_id.string, item_type) catch |err| {
-            std.log.err("Failed to write: {s}", .{@errorName(err)});
+        ctx.writer.beginMessage() catch |err| {
+            std.log.err("Failed to begin message: {s}", .{@errorName(err)});
             return EventHandlerError.InvalidOperation;
         };
+        //ctx.writer.write(ctx.writer, item_id.string, item_type) catch |err| {
+        //    std.log.err("Failed to write: {s}", .{@errorName(err)});
+        //    return EventHandlerError.InvalidOperation;
+        //};
     }
 }
 
@@ -284,7 +279,7 @@ const OptionDef = struct {
     short_alias: []const u8,
 };
 
-const BASE_URL_OPT = OptionDef{ .alias = "--base-url", .short_alias = "-u" };
+const BASE_URL_OPT = OptionDef{ .alias = "--endpoint", .short_alias = "-e" };
 const API_KEY_OPT = OptionDef{ .alias = "--api-key", .short_alias = "-k" };
 const MODEL_OPT = OptionDef{ .alias = "--model", .short_alias = "-m" };
 
@@ -311,8 +306,8 @@ fn loadOptions(init: std.process.Init) ArgParseError!Options {
 
     return Options{
         .prompt = prompt orelse return missingArgumentError("PROMPT"),
-        .baseUrl = baseUrl orelse return missingRequiredOptionError("--base-url"),
-        .apiKey = apiKey orelse return missingRequiredOptionError("--api-key"),
+        .endpoint = baseUrl orelse return missingRequiredOptionError("--endpoint"),
+        .api_key = apiKey orelse return missingRequiredOptionError("--api-key"),
         .model = model orelse return missingRequiredOptionError("--model"),
         .tools = tools,
     };

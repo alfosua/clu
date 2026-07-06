@@ -1,5 +1,6 @@
 const std = @import("std");
 const clu_data = @import("clu_data");
+const DataScanner = @import("clu_data");
 const DataWriter = clu_data.Writer;
 
 pub fn main(init: std.process.Init) !void {
@@ -31,7 +32,7 @@ pub fn main(init: std.process.Init) !void {
 
     try custom_env.put("CLU_AVAILABLE_TOOLS", tools_json_str);
 
-    const argv = &[_][]const u8{ options.provider.hook, "--base-url", "http://localhost:11434/v1", "--api-key", "ollama", "--model", "nemotron-3-nano:4b" };
+    const argv = &[_][]const u8{ options.provider.hook, "--base-url", "http://localhost:11434/v1/responses", "--api-key", "ollama", "--model", "gemma4:e4b" };
 
     var child = try std.process.spawn(init.io, .{
         .argv = argv,

@@ -12,7 +12,6 @@ http_headers: std.http.Client.Request.Headers,
 pub fn init(allocator: std.mem.Allocator, io: std.Io, options: Options) !Client {
     const http_client = std.http.Client{ .allocator = allocator, .io = io };
     const auth_header_value = try buildAuthHeaderValue(allocator, options.api_key);
-    std.log.err("{s}", .{options.endpoint});
     return Client{
         .allocator = allocator,
         .io = io,
@@ -28,15 +27,21 @@ fn buildAuthHeaderValue(allocator: std.mem.Allocator, api_key: []const u8) ![]co
     return try std.mem.concat(allocator, u8, parts);
 }
 
-pub fn request(self: *Client) !Request {
-    var http_request = try self.http_client.request(.POST, self.http_uri, .{
+pub fn request(self: *Client, buffer: []u8) !Request {
+    var http_request = try self.allocator.create(std.http.Client.Request);
+
+    http_request.* = try self.http_client.request(.POST, self.http_uri, .{
         .headers = self.http_headers,
     });
     http_request.transfer_encoding = .chunked;
-    var body_writer = try http_request.sendBodyUnflushed(&.{});
 
-    var req = Request{ .http_request = http_request, .body_writer = body_writer, .jws = .{ .writer = &body_writer.writer } };
+    var body_writer = try http_request.sendBodyUnflushed(buffer);
+    const jws = std.json.Stringify{ .writer = &body_writer.writer };
+
+    var req = Request{ .http_request = http_request, .body_writer = body_writer, .jws = jws };
+
     try req.begin();
+
     return req;
 }
 
@@ -46,7 +51,7 @@ const Options = struct {
 };
 
 const Request = struct {
-    http_request: std.http.Client.Request,
+    http_request: *std.http.Client.Request,
     body_writer: std.http.BodyWriter,
     jws: std.json.Stringify,
 
@@ -71,6 +76,12 @@ const Request = struct {
         var http_response = try self.http_request.receiveHead(&redirect_buffer);
         if (http_response.head.status != .ok) {
             std.log.err("Status: {d} {s}", .{ @intFromEnum(http_response.head.status), @tagName(http_response.head.status) });
+            // Read the error body to see exactly what Ollama is complaining about
+            var err_buf: [4096]u8 = undefined;
+            const bytes_read = try http_response.reader(&err_buf).takeDelimiter('\n') orelse "";
+            if (bytes_read.len > 0) {
+                std.log.err("Response body: {s}", .{err_buf});
+            }
             return error.BadRequest;
         }
         const reader = http_response.reader(transfer_buffer);
